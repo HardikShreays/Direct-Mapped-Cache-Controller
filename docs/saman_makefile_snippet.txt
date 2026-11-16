@@ -1,0 +1,4 @@
+	iverilog -g2012 -o sim/addr_decode.out rtl/addr_decode.v tb/tb_addr_decode.v && vvp sim/addr_decode.out
+	iverilog -g2012 -o sim/tag_ram.out rtl/tag_ram.v tb/tb_tag_ram.v && vvp sim/tag_ram.out
+	iverilog -g2012 -o sim/valid_ram.out rtl/valid_ram.v tb/tb_valid_ram.v && vvp sim/valid_ram.out
+	iverilog -g2012 -o sim/data_ram.out rtl/data_ram.v tb/tb_data_ram.v && vvp sim/data_ram.out
