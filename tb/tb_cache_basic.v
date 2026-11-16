@@ -119,6 +119,24 @@ module tb_cache_basic;
         expect_read_address(3, 32'h0000000C, "A cold read miss");
         $display("PASS A: cold read miss refilled 00, 04, 08, 0C");
 
+        read_and_check(32'h00000000, 32'hA5000000, "B hit after refill");
+        if (memory_reads !== 4) begin
+            $display("FAIL B hit after refill: addr=%h expected=%h actual=%h expected_memory_reads=4 actual_memory_reads=%0d",
+                     32'h00000000, 32'hA5000000, cpu_rdata, memory_reads);
+            $finish(1);
+        end
+        $display("PASS B: repeated read hit used no memory transaction");
+
+        read_and_check(32'h00000004, 32'hA5000004, "C same-block offset 04");
+        read_and_check(32'h00000008, 32'hA5000008, "C same-block offset 08");
+        read_and_check(32'h0000000C, 32'hA500000C, "C same-block offset 0C");
+        if (memory_reads !== 4) begin
+            $display("FAIL C same-block offsets: addr=%h expected=%h actual=%h expected_memory_reads=4 actual_memory_reads=%0d",
+                     cpu_addr, 32'hA500000C, cpu_rdata, memory_reads);
+            $finish(1);
+        end
+        $display("PASS C: all three same-block offsets were hits");
+
         $display("ALL TESTS PASSED");
         $finish(0);
     end
