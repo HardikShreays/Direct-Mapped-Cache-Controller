@@ -49,6 +49,7 @@ module tb_addr_decode;
         check_address(32'hA500_0000);
         check_address(32'h1234_5678);
         check_address(32'hDEAD_BEEF);
+        check_address(32'h0BAD_C0DE);
 
         if (errors == 0)
             $display("PASS: addr_decode");
