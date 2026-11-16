@@ -1,22 +1,25 @@
-// Data store: 64 cache lines, each containing four 32-bit words.
-module data_ram (
-    input  wire        clk,
-    input  wire        we,
-    input  wire [5:0]  index,
-    input  wire [1:0]  word_sel,
-    input  wire [31:0] wdata,
-    output wire [31:0] rdata
+// data_ram.v -- cache data array: N_LINES lines x WORDS 32-bit words (P1-2)
+// Addressed by {index, word_off}. Synchronous write, synchronous read.
+module data_ram #(
+    parameter N_LINES = 64,
+    parameter WORDS   = 4,                // words (32-bit) per block
+    parameter DEPTH   = N_LINES * WORDS,
+    parameter AWIDTH  = $clog2(DEPTH)
+)(
+    input  wire               clk,
+    // write port
+    input  wire               we,
+    input  wire [AWIDTH-1:0]  waddr,
+    input  wire [31:0]        wdata,
+    // read port (synchronous: q valid one cycle after raddr)
+    input  wire [AWIDTH-1:0]  raddr,
+    output reg  [31:0]        q
 );
-    localparam integer NUM_LINES      = 64;
-    localparam integer WORDS_PER_LINE = 4;
-    localparam integer DATA_WIDTH     = 32;
-
-    reg [DATA_WIDTH-1:0] mem [0:NUM_LINES*WORDS_PER_LINE-1];
+    reg [31:0] mem [0:DEPTH-1];
 
     always @(posedge clk) begin
         if (we)
-            mem[{index, word_sel}] <= wdata;
+            mem[waddr] <= wdata;
+        q <= mem[raddr];
     end
-
-    assign rdata = mem[{index, word_sel}];
 endmodule

@@ -1,7 +1,7 @@
 % ============================================================
 %  Direct-Mapped Cache Controller — Phase I IEEE Report
 %  Author (Phase I draft): Prateek Shukla  (P1-6)
-%  Team : Hardik Shreyas (lead), Saman, Bhavya, Priyansh, Prateek
+%  Team : Hardik Shreyas (lead), Saman, Bhavay Goyal, Priyansh, Prateek
 %  Course: Modern Computer Architecture — Project 6
 % ============================================================
 \documentclass[conference]{IEEEtran}
@@ -47,7 +47,7 @@
   \and
   \IEEEauthorblockN{Saman}
   \and
-  \IEEEauthorblockN{Bhavya}
+  \IEEEauthorblockN{Bhavay Goyal}
   \and
   \IEEEauthorblockN{Priyansh}
   \and
@@ -65,8 +65,9 @@ with Icarus Verilog.
 The cache is specified at 1\,KB capacity, 16-byte blocks (four
 32-bit words), and a 32-bit address space, yielding 64 cache lines
 with a 22-bit tag, 6-bit index, and 4-bit block offset.
-The controller is modeled as a five-state finite-state machine
-(FSM)—IDLE, COMPARE, REFILL, WRITE\_THRU, DONE—and interfaces a
+The controller uses six finite-state-machine states: IDLE, COMPARE,
+REFILL, REFILL\_GAP, WRITE\_THRU, and DONE. REFILL\_GAP lowers the
+request for one cycle between refill words. The controller interfaces a
 behavioral main-memory model with configurable latency
 (default~10 cycles per word).
 A Python reference model was developed independently and used to
@@ -242,7 +243,8 @@ words per block), and
 \end{figure}
 
 \subsection{Controller FSM}
-The five-state FSM is illustrated in Figure~\ref{fig:fsm} and
+The main control flow is illustrated in Figure~\ref{fig:fsm}. The
+implemented RTL also includes the REFILL\_GAP handshake state, as
 described in Table~\ref{tab:fsm}.
 
 \begin{figure}[h]
@@ -271,7 +273,10 @@ described in Table~\ref{tab:fsm}.
     REFILL &
       Fetch words 0–3 from memory (block base + 4$i$); write into
       data RAM; set valid and tag &
-      DONE \\
+      REFILL\_GAP between words; DONE after word 3 \\
+    REFILL\_GAP &
+      Deassert the memory request for one cycle before the next word &
+      REFILL \\
     WRITE\_THRU &
       Issue memory write; wait \texttt{mem\_ready}; on hit update
       cached word &
@@ -427,15 +432,15 @@ Each module includes a self-checking testbench exercised by
 In Phase~II Saman will parameterise the design and optionally
 add byte-enable support.
 
-\subsection{Bhavya}
-Bhavya wrote the behavioural main-memory model
-(\texttt{main\_memory\_model.v}) and the directed testbench
-(\texttt{tb\_cache\_basic.v}), which covers cold misses, refill
-hits, conflict misses, and spatial locality within a block.
-The testbench prints \texttt{ALL TESTS PASSED} and dumps the
-\texttt{sim/cache.vcd} waveform.
-In Phase~II Bhavya will extend regression to cover write-hit
-and write-miss-no-allocate scenarios.
+\subsection{Bhavay Goyal}
+Bhavay Goyal implemented and verified the configurable behavioural
+main-memory model (\texttt{main\_memory\_model.v}) and the self-checking
+Phase~I read-path testbench (\texttt{tb\_cache\_basic.v}). The tests
+cover a cold miss with four-word refill, repeated and same-block hits,
+and same-index conflict replacement. Bounded transaction timeouts and
+a global watchdog prevent broken RTL from hanging simulation. Running
+\texttt{make sim} prints \texttt{ALL TESTS PASSED} only after every
+required check succeeds and generates \texttt{sim/cache.vcd}.
 
 \subsection{Priyansh}
 Priyansh wrote the trace generator
@@ -451,8 +456,8 @@ Prateek produced the Phase~I documentation deliverables.
 Specifically, he created the block diagram
 (\texttt{docs/block\_diagram.png}) showing the full module
 hierarchy and signal flow, and the FSM diagram
-(\texttt{docs/fsm.png}) illustrating all five states and their
-transitions.
+(\texttt{docs/fsm.png}) illustrating the main control-flow states and
+their transitions.
 He authored this IEEE report skeleton
 (\texttt{docs/report/main.tex}) with all five required sections
 (Abstract, Literature Review, Proposed Solution, Results and
@@ -518,4 +523,3 @@ in \emph{Proc.\ 17th ISCA}, pp.~364--373, 1990.
 \end{thebibliography}
 
 \end{document}
-

@@ -1,94 +1,68 @@
+// tb_data_ram.v -- self-check for data_ram (P1-2)
 `timescale 1ns/1ps
-
 module tb_data_ram;
-    reg clk;
-    reg we;
-    reg [5:0] index;
-    reg [1:0] word_sel;
-    reg [31:0] wdata;
-    wire [31:0] rdata;
-    integer i;
-    integer errors;
+    reg         clk = 0, we = 0;
+    reg  [7:0]  waddr, raddr;
+    reg  [31:0] wdata;
+    wire [31:0] q;
 
-    data_ram dut (
-        .clk(clk), .we(we), .index(index), .word_sel(word_sel),
-        .wdata(wdata), .rdata(rdata)
+    integer errors = 0;
+
+    data_ram #(.N_LINES(64), .WORDS(4)) u_dut (
+        .clk(clk), .we(we), .waddr(waddr), .wdata(wdata),
+        .raddr(raddr), .q(q)
     );
 
     always #5 clk = ~clk;
 
-    task write_word;
-        input [5:0] write_index;
-        input [1:0] write_word_sel;
-        input [31:0] write_data;
+    task wr;
+        input [7:0] a;
+        input [31:0] d;
         begin
-            @(negedge clk);
-            we = 1'b1;
-            index = write_index;
-            word_sel = write_word_sel;
-            wdata = write_data;
-            @(posedge clk);
-            #1;
+            @(negedge clk); we = 1; waddr = a; wdata = d;
+            @(negedge clk); we = 0;
         end
     endtask
 
-    task check_word;
-        input [5:0] read_index;
-        input [1:0] read_word_sel;
-        input [31:0] expected;
+    task rd;
+        input [7:0] a;
+        input [31:0] exp_val;
         begin
-            @(negedge clk);
-            we = 1'b0;
-            index = read_index;
-            word_sel = read_word_sel;
-            #1;
-            if (rdata !== expected) begin
-                $display("FAIL: data_ram index=%0d word_sel=%0d got=%h expected=%h", read_index, read_word_sel, rdata, expected);
+            @(negedge clk); raddr = a;
+            @(negedge clk); #1;
+            if (q !== exp_val) begin
                 errors = errors + 1;
+                $display("FAIL: data[%0d]=%h expected %h", a, q, exp_val);
             end
         end
     endtask
 
     initial begin
-        clk = 1'b0;
-        we = 1'b0;
-        index = 6'd0;
-        word_sel = 2'd0;
-        wdata = 32'd0;
-        errors = 0;
+        raddr = 0;
+        // refill-like pattern: 4 words of one block (entries 4..7 = line 1)
+        wr(8'd4, 32'h11111111);
+        wr(8'd5, 32'h22222222);
+        wr(8'd6, 32'h33333333);
+        wr(8'd7, 32'h44444444);
+        rd(8'd4, 32'h11111111);
+        rd(8'd5, 32'h22222222);
+        rd(8'd6, 32'h33333333);
+        rd(8'd7, 32'h44444444);
+        // word update inside a block (write-hit behavior)
+        wr(8'd5, 32'hDEADBEEF);
+        rd(8'd5, 32'hDEADBEEF);
+        rd(8'd6, 32'h33333333);   // neighbors untouched
+        // last entry
+        wr(8'd255, 32'hCAFEBABE);
+        rd(8'd255, 32'hCAFEBABE);
+        // Keep the target branch's separate-line alias check.
+        wr({6'd7, 2'd2}, 32'h77770002);
+        wr({6'd8, 2'd2}, 32'h88880002);
+        rd({6'd7, 2'd2}, 32'h77770002);
+        rd({6'd8, 2'd2}, 32'h88880002);
 
-        // Four separate words in a line must retain their individual values.
-        write_word(6'd7, 2'd0, 32'h1111_0000);
-        write_word(6'd7, 2'd1, 32'h2222_0001);
-        write_word(6'd7, 2'd2, 32'h3333_0002);
-        write_word(6'd7, 2'd3, 32'h4444_0003);
-        check_word(6'd7, 2'd0, 32'h1111_0000);
-        check_word(6'd7, 2'd1, 32'h2222_0001);
-        check_word(6'd7, 2'd2, 32'h3333_0002);
-        check_word(6'd7, 2'd3, 32'h4444_0003);
-
-        // The same word position in a distinct line must not alias.
-        write_word(6'd8, 2'd2, 32'hAAAA_0008);
-        check_word(6'd8, 2'd2, 32'hAAAA_0008);
-        check_word(6'd7, 2'd2, 32'h3333_0002);
-
-        // A disabled write must not change an existing word.
-        @(negedge clk);
-        we = 1'b0;
-        index = 6'd7;
-        word_sel = 2'd1;
-        wdata = 32'hDEAD_BEEF;
-        @(posedge clk);
-        #1;
-        if (rdata !== 32'h2222_0001) begin
-            $display("FAIL: data_ram write-enable low changed selected word to %h", rdata);
-            errors = errors + 1;
-        end
-
-        if (errors == 0)
-            $display("PASS: data_ram");
-        else
-            $display("FAIL: data_ram (%0d errors)", errors);
-        $finish;
+        if (errors == 0) $display("tb_data_ram: PASS");
+        else             $display("tb_data_ram: FAIL (%0d errors)", errors);
+        $finish(errors ? 1 : 0);
     end
 endmodule

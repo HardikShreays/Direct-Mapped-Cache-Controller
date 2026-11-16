@@ -1,60 +1,69 @@
+// tb_addr_decode.v -- self-check for addr_decode (P1-2)
 `timescale 1ns/1ps
-
 module tb_addr_decode;
     reg  [31:0] addr;
-    wire [21:0] tag;
+    wire [3:0]  offset;
+    wire [1:0]  word_off;
     wire [5:0]  index;
-    wire [1:0]  word_sel;
-    wire [3:0]  byte_offset;
-    wire [31:0] block_base;
-    integer errors;
+    wire [21:0] tag;
 
-    addr_decode dut (
-        .addr(addr), .tag(tag), .index(index), .word_sel(word_sel),
-        .byte_offset(byte_offset), .block_base(block_base)
+    integer errors = 0;
+
+    addr_decode u_dut (
+        .addr(addr), .offset(offset), .word_off(word_off),
+        .index(index), .tag(tag)
     );
 
-    task check_address;
-        input [31:0] value;
-        reg [21:0] expected_tag;
-        reg [5:0]  expected_index;
-        reg [1:0]  expected_word_sel;
-        reg [3:0]  expected_byte_offset;
-        reg [31:0] expected_block_base;
+    task check;
+        input [31:0] a;
+        reg [3:0]  e_off;
+        reg [1:0]  e_word;
+        reg [5:0]  e_idx;
+        reg [21:0] e_tag;
         begin
-            addr = value;
+            addr = a;
             #1;
-            expected_tag         = value[31:10];
-            expected_index       = value[9:4];
-            expected_word_sel    = value[3:2];
-            expected_byte_offset = value[3:0];
-            expected_block_base  = {value[31:4], 4'b0000};
-            if ((tag !== expected_tag) || (index !== expected_index) ||
-                (word_sel !== expected_word_sel) ||
-                (byte_offset !== expected_byte_offset) ||
-                (block_base !== expected_block_base)) begin
-                $display("FAIL: addr_decode addr=%h got tag=%h index=%h word_sel=%h byte_offset=%h block_base=%h", value, tag, index, word_sel, byte_offset, block_base);
+            e_off  = a[3:0];
+            e_word = a[3:2];
+            e_idx  = a[9:4];
+            e_tag  = a[31:10];
+            if (offset !== e_off || word_off !== e_word ||
+                index !== e_idx || tag !== e_tag) begin
                 errors = errors + 1;
+                $display("FAIL: addr=%h off=%h(exp %h) word=%h(exp %h) idx=%h(exp %h) tag=%h(exp %h)",
+                         a, offset, e_off, word_off, e_word, index, e_idx, tag, e_tag);
             end
         end
     endtask
 
     initial begin
-        errors = 0;
-        check_address(32'h0000_0000);
-        check_address(32'hFFFF_FFFF);
-        check_address(32'h0000_0010);
-        check_address(32'h0000_03FC);
-        check_address(32'h0000_0400);
-        check_address(32'hA500_0000);
-        check_address(32'h1234_5678);
-        check_address(32'hDEAD_BEEF);
-        check_address(32'h0BAD_C0DE);
+        // hand-checked golden case: 0x00400C34 -> tag 0x1003, index 0x03,
+        // word 1, offset 4
+        addr = 32'h0040_0C34; #1;
+        if (tag !== 22'h1003 || index !== 6'h03 ||
+            word_off !== 2'd1 || offset !== 4'h4) begin
+            errors = errors + 1;
+            $display("FAIL: golden 0x00400C34 mismatch: tag=%h idx=%h word=%h off=%h",
+                     tag, index, word_off, offset);
+        end
+        // formula checks over assorted addresses, including index boundaries
+        check(32'h0000_0000);
+        check(32'h0000_00FC);
+        check(32'h0000_0100);
+        check(32'hDEAD_BEEF);
+        check(32'hA5A5_5A5A);
+        check(32'hFFFF_FFFC);
+        check(32'h0000_0410);
+        check(32'h0004_0C34);
+        // Additional teammate coverage: block/index edges and mixed patterns.
+        check(32'h0000_0010);
+        check(32'h0000_03FC);
+        check(32'h0000_0400);
+        check(32'h1234_5678);
+        check(32'h0BAD_C0DE);
 
-        if (errors == 0)
-            $display("PASS: addr_decode");
-        else
-            $display("FAIL: addr_decode (%0d errors)", errors);
-        $finish;
+        if (errors == 0) $display("tb_addr_decode: PASS");
+        else             $display("tb_addr_decode: FAIL (%0d errors)", errors);
+        $finish(errors ? 1 : 0);
     end
 endmodule

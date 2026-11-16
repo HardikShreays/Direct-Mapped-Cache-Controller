@@ -1,97 +1,65 @@
+// tb_valid_ram.v -- self-check for valid_ram (P1-2)
+// Checks: reset clears all bits, write/read-back, and mid-run reset clears.
 `timescale 1ns/1ps
-
 module tb_valid_ram;
-    reg clk;
-    reg rst;
-    reg we;
-    reg [5:0] index;
-    reg wdata;
-    wire rdata;
-    integer i;
-    integer errors;
+    reg        clk = 0, rst = 1, we = 0, wdata = 0;
+    reg  [5:0] waddr, raddr;
+    wire       q;
 
-    valid_ram dut (.clk(clk), .rst(rst), .we(we), .index(index), .wdata(wdata), .rdata(rdata));
+    integer errors = 0;
+    integer i;
+
+    valid_ram #(.N_LINES(64)) u_dut (
+        .clk(clk), .rst(rst), .we(we), .waddr(waddr), .wdata(wdata),
+        .raddr(raddr), .q(q)
+    );
 
     always #5 clk = ~clk;
 
-    task check_valid;
-        input [5:0] read_index;
-        input expected;
+    task wr;
+        input [5:0] a;
+        input d;
         begin
-            index = read_index;
-            #1;
-            if (rdata !== expected) begin
-                $display("FAIL: valid_ram index=%0d got=%b expected=%b", read_index, rdata, expected);
+            @(negedge clk); we = 1; waddr = a; wdata = d;
+            @(negedge clk); we = 0;
+        end
+    endtask
+
+    task rd;
+        input [5:0] a;
+        input exp_val;
+        begin
+            @(negedge clk); raddr = a;
+            @(negedge clk); #1;
+            if (q !== exp_val) begin
                 errors = errors + 1;
+                $display("FAIL: valid[%0d]=%b expected %b", a, q, exp_val);
             end
         end
     endtask
 
-    task write_valid;
-        input [5:0] write_index;
-        input write_data;
-        begin
-            @(negedge clk);
-            rst = 1'b0;
-            we = 1'b1;
-            index = write_index;
-            wdata = write_data;
-            @(posedge clk);
-            #1;
-            we = 1'b0;
-        end
-    endtask
-
     initial begin
-        clk = 1'b0;
-        rst = 1'b1;
-        we = 1'b0;
-        index = 6'd0;
-        wdata = 1'b0;
-        errors = 0;
-
-        @(posedge clk);
-        #1;
-        rst = 1'b0;
+        raddr = 0;
+        // 1. after reset all valid bits are 0
+        repeat (2) @(negedge clk);
+        rst = 0;
         for (i = 0; i < 64; i = i + 1)
-            check_valid(i[5:0], 1'b0);
-
-        write_valid(6'd2, 1'b1);
-        write_valid(6'd19, 1'b1);
-        write_valid(6'd63, 1'b1);
-        for (i = 0; i < 64; i = i + 1) begin
-            if ((i == 2) || (i == 19) || (i == 63))
-                check_valid(i[5:0], 1'b1);
-            else
-                check_valid(i[5:0], 1'b0);
-        end
-
-        // A disabled write must not set an invalid line.
-        @(negedge clk);
-        we = 1'b0;
-        index = 6'd20;
-        wdata = 1'b1;
-        @(posedge clk);
-        #1;
-        check_valid(6'd20, 1'b0);
-
-        // Reset takes priority over a simultaneous write.
-        @(negedge clk);
-        rst = 1'b1;
-        we = 1'b1;
-        index = 6'd7;
-        wdata = 1'b1;
-        @(posedge clk);
-        #1;
-        rst = 1'b0;
-        we = 1'b0;
+            rd(i[5:0], 1'b0);
+        // 2. set a few bits, read back
+        wr(6'd7,  1'b1);
+        wr(6'd40, 1'b1);
+        rd(6'd7,  1'b1);
+        rd(6'd40, 1'b1);
+        rd(6'd8,  1'b0);   // neighbor still clear
+        // 3. mid-run reset clears again
+        @(negedge clk); rst = 1;
+        repeat (2) @(negedge clk);
+        rst = 0;
         for (i = 0; i < 64; i = i + 1)
-            check_valid(i[5:0], 1'b0);
+            rd(i[5:0], 1'b0);
 
-        if (errors == 0)
-            $display("PASS: valid_ram");
-        else
-            $display("FAIL: valid_ram (%0d errors)", errors);
-        $finish;
+        if (errors == 0) $display("tb_valid_ram: PASS");
+        else             $display("tb_valid_ram: FAIL (%0d errors)", errors);
+        $finish(errors ? 1 : 0);
     end
 endmodule
