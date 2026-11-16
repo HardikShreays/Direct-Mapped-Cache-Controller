@@ -4,3 +4,4 @@ sim/a.out
 __pycache__/
 *.pyc
 .DS_Store
+sim/
