@@ -47,8 +47,16 @@ module tb_cache_basic;
     // Count completed memory reads: these are the observed refill handshakes.
     always @(posedge clk) begin
         if (!rst && mem_ready && !mem_we) begin
+            if (memory_reads >= 32) begin
+                $display("FAIL memory monitor: too many completed reads (%0d)", memory_reads + 1);
+                $finish(1);
+            end
             completed_read_addr[memory_reads] = mem_addr;
             memory_reads = memory_reads + 1;
+        end
+        if (!rst && mem_ready && mem_we) begin
+            $display("FAIL memory monitor: unexpected write in Phase 1 read tests at address %h", mem_addr);
+            $finish(1);
         end
     end
 
@@ -102,6 +110,15 @@ module tb_cache_basic;
         $dumpvars(0, tb_cache_basic);
     end
 
+    // Independent guard in case reset or a broken handshake prevents a task
+    // timeout from advancing.
+    initial begin
+        #50000;
+        $display("FAIL global watchdog: simulation exceeded 5000 clock cycles (memory_reads=%0d)",
+                 memory_reads);
+        $finish(1);
+    end
+
     initial begin
         repeat (4) @(negedge clk);
         rst = 1'b0;
@@ -136,6 +153,29 @@ module tb_cache_basic;
             $finish(1);
         end
         $display("PASS C: all three same-block offsets were hits");
+
+        read_and_check(32'h00000400, 32'hA5000400, "D conflict miss at 00000400");
+        if (memory_reads !== 8) begin
+            $display("FAIL D conflict miss: addr=%h expected=%h actual=%h expected_memory_reads=8 actual_memory_reads=%0d",
+                     32'h00000400, 32'hA5000400, cpu_rdata, memory_reads);
+            $finish(1);
+        end
+        expect_read_address(4, 32'h00000400, "D conflict refill");
+        expect_read_address(5, 32'h00000404, "D conflict refill");
+        expect_read_address(6, 32'h00000408, "D conflict refill");
+        expect_read_address(7, 32'h0000040C, "D conflict refill");
+
+        read_and_check(32'h00000000, 32'hA5000000, "D evicted block misses again");
+        if (memory_reads !== 12) begin
+            $display("FAIL D evicted block: addr=%h expected=%h actual=%h expected_memory_reads=12 actual_memory_reads=%0d",
+                     32'h00000000, 32'hA5000000, cpu_rdata, memory_reads);
+            $finish(1);
+        end
+        expect_read_address(8,  32'h00000000, "D replacement refill");
+        expect_read_address(9,  32'h00000004, "D replacement refill");
+        expect_read_address(10, 32'h00000008, "D replacement refill");
+        expect_read_address(11, 32'h0000000C, "D replacement refill");
+        $display("PASS D: same-index conflict caused refill and eviction");
 
         $display("ALL TESTS PASSED");
         $finish(0);
