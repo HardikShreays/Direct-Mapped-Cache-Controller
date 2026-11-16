@@ -55,6 +55,11 @@ module tb_data_ram;
         // last entry
         wr(8'd255, 32'hCAFEBABE);
         rd(8'd255, 32'hCAFEBABE);
+        // Keep the target branch's separate-line alias check.
+        wr({6'd7, 2'd2}, 32'h77770002);
+        wr({6'd8, 2'd2}, 32'h88880002);
+        rd({6'd7, 2'd2}, 32'h77770002);
+        rd({6'd8, 2'd2}, 32'h88880002);
 
         if (errors == 0) $display("tb_data_ram: PASS");
         else             $display("tb_data_ram: FAIL (%0d errors)", errors);

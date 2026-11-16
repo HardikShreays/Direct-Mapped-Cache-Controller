@@ -55,6 +55,12 @@ module tb_addr_decode;
         check(32'hFFFF_FFFC);
         check(32'h0000_0410);
         check(32'h0004_0C34);
+        // Additional teammate coverage: block/index edges and mixed patterns.
+        check(32'h0000_0010);
+        check(32'h0000_03FC);
+        check(32'h0000_0400);
+        check(32'h1234_5678);
+        check(32'h0BAD_C0DE);
 
         if (errors == 0) $display("tb_addr_decode: PASS");
         else             $display("tb_addr_decode: FAIL (%0d errors)", errors);

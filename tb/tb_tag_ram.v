@@ -7,6 +7,7 @@ module tb_tag_ram;
     wire [21:0] q;
 
     integer errors = 0;
+    integer i;
 
     tag_ram #(.N_LINES(64), .DWIDTH(22)) u_dut (
         .clk(clk), .we(we), .waddr(waddr), .wdata(wdata),
@@ -51,6 +52,11 @@ module tb_tag_ram;
         // overwrite check
         wr(6'd5,  22'h0F0F0F);
         rd(6'd5,  22'h0F0F0F);
+        // Exercise every line, retaining the target branch's full-array test.
+        for (i = 0; i < 64; i = i + 1)
+            wr(i[5:0], 22'h030000 + i);
+        for (i = 0; i < 64; i = i + 1)
+            rd(i[5:0], 22'h030000 + i);
 
         if (errors == 0) $display("tb_tag_ram: PASS");
         else             $display("tb_tag_ram: FAIL (%0d errors)", errors);

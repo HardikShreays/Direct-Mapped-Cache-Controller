@@ -7,6 +7,7 @@ module tb_valid_ram;
     wire       q;
 
     integer errors = 0;
+    integer i;
 
     valid_ram #(.N_LINES(64)) u_dut (
         .clk(clk), .rst(rst), .we(we), .waddr(waddr), .wdata(wdata),
@@ -42,8 +43,8 @@ module tb_valid_ram;
         // 1. after reset all valid bits are 0
         repeat (2) @(negedge clk);
         rst = 0;
-        rd(6'd0, 1'b0);
-        rd(6'd63, 1'b0);
+        for (i = 0; i < 64; i = i + 1)
+            rd(i[5:0], 1'b0);
         // 2. set a few bits, read back
         wr(6'd7,  1'b1);
         wr(6'd40, 1'b1);
@@ -54,8 +55,8 @@ module tb_valid_ram;
         @(negedge clk); rst = 1;
         repeat (2) @(negedge clk);
         rst = 0;
-        rd(6'd7,  1'b0);
-        rd(6'd40, 1'b0);
+        for (i = 0; i < 64; i = i + 1)
+            rd(i[5:0], 1'b0);
 
         if (errors == 0) $display("tb_valid_ram: PASS");
         else             $display("tb_valid_ram: FAIL (%0d errors)", errors);
