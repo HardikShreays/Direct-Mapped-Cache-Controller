@@ -5,7 +5,7 @@ directed + unit testbenches, and a Python reference model.
 
 **Team:** Hardik Shreyas (lead), Saman, Bhavya, Priyansh, Prateek —
 Modern Computer Architecture, Project 6.
-**Status:** Phase I complete (read path, write-through path, waveform, docs).
+**Status:** Phase I implemented on feature branches (RTL verified: `make sim` + `make test_units` pass). Pending merge into `main` via reviewed PRs — Phase I is not done until that merge lands.
 **Video:** see [docs/video_link.md](docs/video_link.md).
 
 ## Design spec (frozen)
