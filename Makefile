@@ -55,7 +55,10 @@ results:
 synth:
 	@if command -v yosys >/dev/null 2>&1; then \
 	  mkdir -p results; \
-	  yosys -p "read_verilog rtl/addr_decode.v rtl/valid_ram.v rtl/tag_ram.v rtl/data_ram.v rtl/cache_controller.v rtl/cache_top.v; synth -top cache_top; stat" | tee results/synth_yosys.log; \
+	  { yosys -p "read_verilog rtl/addr_decode.v rtl/valid_ram.v rtl/tag_ram.v rtl/data_ram.v rtl/cache_controller.v rtl/cache_top.v; synth -top cache_top; stat"; \
+	    echo '===== memory-inference pass (D-3: FPGA BRAM detection) ====='; \
+	    yosys -p "read_verilog rtl/addr_decode.v rtl/valid_ram.v rtl/tag_ram.v rtl/data_ram.v rtl/cache_controller.v rtl/cache_top.v; hierarchy -top cache_top; proc; opt; memory_dff; stat"; \
+	  } | tee results/synth_yosys.log; \
 	else \
 	  echo "yosys not installed -- see results/synth_yosys.log note"; exit 1; \
 	fi
