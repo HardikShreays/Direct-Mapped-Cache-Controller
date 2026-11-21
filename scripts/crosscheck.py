@@ -21,17 +21,25 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 from cache_model import parse_trace, simulate  # noqa: E402
 
-RTL = ["addr_decode.v", "valid_ram.v", "tag_ram.v", "data_ram.v",
-       "cache_controller.v", "cache_top.v"]
+RTL = {
+    1: ["addr_decode.v", "valid_ram.v", "tag_ram.v", "data_ram.v",
+        "cache_controller.v", "cache_top.v"],
+    2: ["addr_decode.v", "valid_ram.v", "tag_ram.v", "data_ram.v", "lru_ram.v",
+        "cache_controller_2way.v", "cache_top_2way.v"],
+}
 RESULT_RE = re.compile(
     r"TRACE_RESULT trace=(\S+) accesses=(\d+) hits=(\d+) misses=(\d+) "
     r"reads=(\d+) writes=(\d+) stalls=(\d+)")
 
 
-def run_rtl(trace_path, cache_bytes, block_bytes, sim_bin, workdir):
+def run_rtl(trace_path, cache_bytes, block_bytes, ways, sim_bin, workdir):
     """Compile+run the trace tb; return the counters dict or raise."""
-    iver = subprocess.run(["iverilog", "-g2012", "-o", sim_bin]
-                          + [os.path.join(ROOT, "rtl", f) for f in RTL]
+    iver = subprocess.run(["iverilog", "-g2012",
+                           f"-Ptb_cache_trace.WAYS={ways}",
+                           f"-Ptb_cache_trace.CACHE_BYTES={cache_bytes}",
+                           f"-Ptb_cache_trace.BLOCK_BYTES={block_bytes}",
+                           "-o", sim_bin]
+                          + [os.path.join(ROOT, "rtl", f) for f in RTL[ways]]
                           + [os.path.join(ROOT, "tb", "main_memory_model.v"),
                              os.path.join(ROOT, "tb", "tb_cache_trace.v")],
                           capture_output=True, text=True)
@@ -54,6 +62,7 @@ def main(argv=None):
     ap.add_argument("--traces", default=os.path.join(ROOT, "traces"))
     ap.add_argument("--cache-bytes", type=int, default=1024)
     ap.add_argument("--block-bytes", type=int, default=16)
+    ap.add_argument("--ways", type=int, default=1, choices=(1, 2))
     args = ap.parse_args(argv)
 
     workdir = os.path.join(ROOT, "sim")
@@ -67,8 +76,10 @@ def main(argv=None):
     failures = 0
     for tf in trace_files:
         path = os.path.join(args.traces, tf)
-        model = simulate(parse_trace(path), args.cache_bytes, args.block_bytes)
-        rtl = run_rtl(path, args.cache_bytes, args.block_bytes, sim_bin, workdir)
+        model = simulate(parse_trace(path), args.cache_bytes, args.block_bytes,
+                         args.ways)
+        rtl = run_rtl(path, args.cache_bytes, args.block_bytes, args.ways,
+                      sim_bin, workdir)
         exp = dict(accesses=model.accesses, hits=model.hits, misses=model.misses,
                    reads=model.reads, writes=model.writes)
         bad = [k for k in exp if exp[k] != rtl[k]]

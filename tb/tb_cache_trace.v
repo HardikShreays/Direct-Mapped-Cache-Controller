@@ -17,7 +17,8 @@
 `timescale 1ns/1ps
 module tb_cache_trace #(
     parameter CACHE_BYTES = 1024,
-    parameter BLOCK_BYTES = 16
+    parameter BLOCK_BYTES = 16,
+    parameter WAYS        = 1      // 1 = direct-mapped, 2 = set-associative
 );
     reg         clk = 0, rst = 1;
     reg         cpu_req = 0, cpu_we = 0;
@@ -31,19 +32,37 @@ module tb_cache_trace #(
 
     wire [31:0] cnt_access, cnt_hit, cnt_miss, cnt_read, cnt_write, cnt_stall_cycles;
 
-    cache_top #(
-        .CACHE_BYTES (CACHE_BYTES),
-        .BLOCK_BYTES (BLOCK_BYTES)
-    ) dut (
-        .clk(clk), .rst(rst),
-        .cpu_req(cpu_req), .cpu_we(cpu_we), .cpu_addr(cpu_addr),
-        .cpu_wdata(cpu_wdata), .cpu_rdata(cpu_rdata), .cpu_ready(cpu_ready),
-        .mem_req(mem_req), .mem_we(mem_we), .mem_addr(mem_addr),
-        .mem_wdata(mem_wdata), .mem_rdata(mem_rdata), .mem_ready(mem_ready),
-        .cnt_access(cnt_access), .cnt_hit(cnt_hit), .cnt_miss(cnt_miss),
-        .cnt_read(cnt_read), .cnt_write(cnt_write),
-        .cnt_stall_cycles(cnt_stall_cycles)
-    );
+    generate
+        if (WAYS == 2) begin : g_dut
+            cache_top_2way #(
+                .CACHE_BYTES (CACHE_BYTES),
+                .BLOCK_BYTES (BLOCK_BYTES)
+            ) dut (
+                .clk(clk), .rst(rst),
+                .cpu_req(cpu_req), .cpu_we(cpu_we), .cpu_addr(cpu_addr),
+                .cpu_wdata(cpu_wdata), .cpu_rdata(cpu_rdata), .cpu_ready(cpu_ready),
+                .mem_req(mem_req), .mem_we(mem_we), .mem_addr(mem_addr),
+                .mem_wdata(mem_wdata), .mem_rdata(mem_rdata), .mem_ready(mem_ready),
+                .cnt_access(cnt_access), .cnt_hit(cnt_hit), .cnt_miss(cnt_miss),
+                .cnt_read(cnt_read), .cnt_write(cnt_write),
+                .cnt_stall_cycles(cnt_stall_cycles)
+            );
+        end else begin : g_dut
+            cache_top #(
+                .CACHE_BYTES (CACHE_BYTES),
+                .BLOCK_BYTES (BLOCK_BYTES)
+            ) dut (
+                .clk(clk), .rst(rst),
+                .cpu_req(cpu_req), .cpu_we(cpu_we), .cpu_addr(cpu_addr),
+                .cpu_wdata(cpu_wdata), .cpu_rdata(cpu_rdata), .cpu_ready(cpu_ready),
+                .mem_req(mem_req), .mem_we(mem_we), .mem_addr(mem_addr),
+                .mem_wdata(mem_wdata), .mem_rdata(mem_rdata), .mem_ready(mem_ready),
+                .cnt_access(cnt_access), .cnt_hit(cnt_hit), .cnt_miss(cnt_miss),
+                .cnt_read(cnt_read), .cnt_write(cnt_write),
+                .cnt_stall_cycles(cnt_stall_cycles)
+            );
+        end
+    endgenerate
 
     main_memory_model #(.MEM_LATENCY(10)) u_mem (
         .clk(clk), .rst(rst),
@@ -59,29 +78,37 @@ module tb_cache_trace #(
     reg [31:0] prev_refill_cnt = 0;
     integer a_errors = 0;
     localparam [2:0] S_REFILL_A = 3'd2;
+
+    // valid-write monitor signal differs between the two designs
+    generate if (WAYS == 1) begin : g_vldmon
+        wire vld_we_mon = g_dut.dut.u_ctrl.vld_we;
+    end else begin : g_vldmon
+        wire vld_we_mon = g_dut.dut.u_ctrl.vld_we0 | g_dut.dut.u_ctrl.vld_we1;
+    end endgenerate
+
     always @(negedge clk) begin
         if (!rst) begin
             if (cpu_ready === 1'b1 && ready_prev) begin
                 a_errors = a_errors + 1;
                 $display("FAIL ASSERT@%0t: cpu_ready high for 2+ consecutive cycles", $time);
             end
-            if (cpu_ready === 1'b1 && dut.u_ctrl.state !== dut.u_ctrl.S_DONE) begin
+            if (cpu_ready === 1'b1 && g_dut.dut.u_ctrl.state !== g_dut.dut.u_ctrl.S_DONE) begin
                 a_errors = a_errors + 1;
                 $display("FAIL ASSERT@%0t: cpu_ready outside DONE state", $time);
             end
-            if (dut.u_ctrl.vld_we === 1'b1 &&
-                !(prev_state == S_REFILL_A && prev_refill_cnt == dut.u_ctrl.WORDS-1)) begin
+            if (g_vldmon.vld_we_mon === 1'b1 &&
+                !(prev_state == S_REFILL_A && prev_refill_cnt == g_dut.dut.u_ctrl.WORDS-1)) begin
                 a_errors = a_errors + 1;
                 $display("FAIL ASSERT@%0t: valid bit set outside final refill word", $time);
             end
-            if (dut.mem_we === 1'b1 && dut.u_ctrl.req_we !== 1'b1) begin
+            if (g_dut.dut.mem_we === 1'b1 && g_dut.dut.u_ctrl.req_we !== 1'b1) begin
                 a_errors = a_errors + 1;
                 $display("FAIL ASSERT@%0t: memory write issued for a read request", $time);
             end
         end
         ready_prev      <= (cpu_ready === 1'b1);
-        prev_state      <= dut.u_ctrl.state;
-        prev_refill_cnt <= dut.u_ctrl.refill_cnt;
+        prev_state      <= g_dut.dut.u_ctrl.state;
+        prev_refill_cnt <= g_dut.dut.u_ctrl.refill_cnt;
     end
 
     // ---- golden memory mirror ----
