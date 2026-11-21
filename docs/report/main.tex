@@ -1,0 +1,171 @@
+% Direct-Mapped Cache Controller -- IEEE report skeleton (Phase I)
+% Compile with IEEEtran (Overleaf: new project from the IEEE conference template,
+% then paste this file).  Team: Hardik Shreyas (lead), Saman, Bhavya, Priyansh,
+% Prateek.  Course: Modern Computer Architecture, Project 6.
+\documentclass[conference]{IEEEtran}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+
+\begin{document}
+
+\title{A Direct-Mapped Cache Controller in Verilog:\\
+Design, Verification, and Phase~I Results}
+
+\author{\IEEEauthorblockN{Hardik Shreyas, Saman, Bhavya, Priyansh, Prateek}
+\IEEEauthorblockA{Modern Computer Architecture -- Project 6}}
+
+\maketitle
+
+\begin{abstract}
+Caches bridge the growing gap between processor and memory speeds. This project
+designs, implements, and verifies a direct-mapped cache controller in Verilog:
+a 1\,KB cache with 16-byte blocks (64 lines), a 32-bit address split into
+22-bit tag, 6-bit index, and 4-bit offset, and a write-through,
+no-write-allocate write policy. The controller is a five-state FSM (IDLE,
+COMPARE, REFILL, WRITE\_THRU, DONE) that refills whole blocks over a
+latency-modeled behavioral memory and reports performance counters
+(accesses, hits, misses, reads, writes, stall cycles). Phase~I delivers the
+read path (cold miss, refill, hits), a directed testbench that passes all
+cases, a waveform showing a miss, a 4-word refill, and a hit, and a Python
+reference model that reproduces expected hit rates on five memory traces:
+75\% on sequential word reads, above 99\% on a small loop, near 0\% on a large
+stride, and 88.9\% on a matrix-multiply-like pattern. Phase~II will complete
+the write path verification, trace-driven regression, AMAT analysis, synthesis,
+and a 2-way set-associative extension.
+\end{abstract}
+
+\section{Introduction}
+Processor performance has improved faster than DRAM latency, making on-chip
+caches essential. The simplest effective organization is the direct-mapped
+cache: each memory block maps to exactly one cache line, selected by the
+address index bits. This project builds a working direct-mapped cache
+controller from scratch in Verilog, verifies it against a behavioral memory
+model, and measures its hit-rate behavior on representative access traces.
+
+The design targets (frozen by the team lead):
+\begin{itemize}
+  \item 32-bit byte address; 1\,KB cache; 16\,B blocks (4 words); 64 lines.
+  \item Address split: tag $[31:10]$, index $[9:4]$, offset $[3:0]$
+        (word select $[3:2]$).
+  \item Write policy: write-through, no-write-allocate.
+  \item Read miss: refill the whole block (4 words), then return the
+        requested word.
+  \item Hit latency: 1 cycle after the request is accepted; memory accesses
+        cost \texttt{MEM\_LATENCY} = 10 cycles per word.
+\end{itemize}
+
+\section{Literature Review}
+(Phase I placeholder -- each member adds the sources they actually read.)
+\begin{itemize}
+  \item J. L. Hennessy and D. A. Patterson, \emph{Computer Architecture:
+        A Quantitative Approach} -- cache organization, AMAT, locality.
+  \item D. A. Patterson and J. L. Hennessy, \emph{Computer Organization and
+        Design, RISC-V Edition} -- direct-mapped caches, write policies.
+  \item (Add 4--6 papers or lecture notes on cache design here.)
+\end{itemize}
+
+\section{Proposed Solution}
+\subsection{Address Split}
+With 16\,B blocks the offset is $\log_2 16 = 4$ bits; with 64 lines the index
+is $\log_2 64 = 6$ bits; the remaining $32-4-6 = 22$ bits form the tag.
+The offset's top 2 bits select the word inside the block.
+
+\subsection{Block Diagram and FSM}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{../../docs/block_diagram.png}
+  \caption{Block diagram: cache\_top instantiates the controller, the
+  tag/data/valid RAMs, the address decoder, and the performance counters.}
+\end{figure}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{../../docs/fsm.png}
+  \caption{Controller FSM. Valid bits are cleared on reset; writes never
+  allocate on miss.}
+\end{figure}
+
+The controller latches the request in IDLE, resolves hit/miss in COMPARE
+(the synchronous RAM read ports are addressed by the live CPU address, so the
+comparison happens one cycle after acceptance -- the 1-cycle hit), refills
+all four words on a read miss, writes through to memory on writes (updating
+the cached word on a write hit), and pulses \texttt{cpu\_ready} for one cycle
+in DONE.
+
+\subsection{Module Descriptions}
+\begin{itemize}
+  \item \texttt{rtl/addr\_decode.v} -- combinational tag/index/offset split
+        (Saman).
+  \item \texttt{rtl/tag\_ram.v}, \texttt{rtl/data\_ram.v},
+        \texttt{rtl/valid\_ram.v} -- synchronous-read RAMs; the valid RAM is
+        cleared on reset (Saman).
+  \item \texttt{rtl/cache\_controller.v} -- the FSM and performance counters
+        (Hardik).
+  \item \texttt{rtl/cache\_top.v} -- top-level wiring (Hardik).
+  \item \texttt{tb/main\_memory\_model.v} -- behavioral memory,
+        \texttt{mem[i] = 4i + 0xA5000000}, \texttt{MEM\_LATENCY} cycles per
+        word access (Bhavya).
+  \item \texttt{tb/tb\_cache\_basic.v} -- directed tests: cold miss, hit,
+        spatial hit, conflict miss, eviction, write miss (no allocate),
+        write hit + read-after-write, mid-run reset (Bhavya).
+  \item \texttt{scripts/gen\_traces.py},
+        \texttt{scripts/cache\_model.py} -- trace generation and the Python
+        reference model (Priyansh).
+\end{itemize}
+
+\subsection{Verification Strategy}
+Per-module self-check testbenches run under \texttt{make test\_units}; the
+directed testbench runs under \texttt{make sim}, prints \texttt{ALL TESTS
+PASSED}, and dumps \texttt{sim/cache.vcd} showing a miss, the 4-word refill,
+and a subsequent hit. The Python reference model
+(\texttt{scripts/cache\_model.py}) provides golden hit/miss counts; Phase~II
+cross-checks the RTL counters against it on all five traces.
+
+\section{Phase I Results}
+Reference-model hit rates on the generated traces (RTL cross-check is
+Phase~II work):
+
+\begin{table}[htbp]
+  \centering
+  \caption{Reference-model hit rates (1\,KB / 16\,B, 10{,}000 accesses each).}
+  \begin{tabular}{lrr}
+    \toprule
+    Trace & Hit rate & Expected \\
+    \midrule
+    Sequential word reads & 75.00\% & $\approx$75\% (1 miss / 4) \\
+    Random over 1\,MB     & 0.12\%  & $\approx$0--10\% \\
+    Loop over 512\,B set  & 99.68\% & $>$95\% after warm-up \\
+    Stride 64\,B          & 0.00\%  & $\approx$0\% \\
+    Matmul-like           & 88.85\% & high (A row reuse) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The directed RTL simulation passes all tests, and the waveform
+(\texttt{sim/cache.vcd}) shows the expected miss $\rightarrow$ 4-word refill
+$\rightarrow$ hit sequence.
+
+\section{Individual Contributions}
+(One paragraph per member, matching git history.)
+\begin{itemize}
+  \item \textbf{Hardik Shreyas (lead):} repo setup, controller FSM, top level,
+        Makefile, integration and Phase~I gate.
+  \item \textbf{Saman:} address decoder and the three RAMs with unit TBs.
+  \item \textbf{Bhavya:} behavioral memory model and directed testbench.
+  \item \textbf{Priyansh:} trace generation and Python reference model.
+  \item \textbf{Prateek:} diagrams, report assembly, video recording.
+\end{itemize}
+
+\section{Conclusion (Phase II)}
+To be completed after Phase~II results (AMAT, sweeps, synthesis, 2-way
+comparison).
+
+\section{References}
+\begin{thebibliography}{9}
+\bibitem{hp} J. L. Hennessy and D. A. Patterson, \emph{Computer Architecture:
+  A Quantitative Approach}, 6th ed.
+\bibitem{ph} D. A. Patterson and J. L. Hennessy, \emph{Computer Organization
+  and Design: The Hardware/Software Interface, RISC-V Edition}.
+\end{thebibliography}
+
+\end{document}
