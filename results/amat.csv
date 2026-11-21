@@ -1,0 +1,7 @@
+trace,hit_rate,miss_rate,miss_penalty_cycles,amat_cycles,amat_no_cache_cycles,speedup_vs_no_cache
+sequential,0.7500,0.2500,55.0,14.75,10,0.68
+random,0.0012,0.9988,55.0,55.93,10,0.18
+loop,0.9968,0.0032,55.0,1.18,10,8.50
+stride,0.0000,1.0000,55.0,56.00,10,0.18
+matmul,0.8885,0.1115,55.0,7.13,10,1.40
+locality,0.0459,0.9541,55.0,53.48,10,0.19

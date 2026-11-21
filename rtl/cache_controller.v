@@ -118,6 +118,7 @@ module cache_controller #(
         end else begin
             // default: single-cycle pulses
             mem_req <= 1'b0;
+            mem_we  <= 1'b0;
             dt_we   <= 1'b0;
             tag_we  <= 1'b0;
             vld_we  <= 1'b0;
