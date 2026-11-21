@@ -2,7 +2,7 @@
 """Generate the 5 memory traces (P1-5 / C-1), 10,000 accesses each.
 
 Format: 'R 0xADDR' or 'W 0xADDR 0xDATA'. All addresses are word-aligned.
-Seeded, so output is reproducible.
+Seeded, so output is reproducible. (Phase II adds locality.trace for C-4.)
 
 Usage: python3 scripts/gen_traces.py [--out traces] [--n 10000]
 """
@@ -65,12 +65,27 @@ def matmul(n, rng):
     return (out * reps)[:n]
 
 
+def locality(n, rng):
+    """Random with locality: 85% in 2KB around 8 hotspots over 1MB, 15% uniform, 20% writes"""
+    out = []
+    hotspots = [rng.randrange(0, 1 << 20, WORD) for _ in range(8)]
+    for _ in range(n):
+        if rng.random() < 0.85:
+            base = rng.choice(hotspots)
+            addr = (base + rng.randrange(0, 2048, WORD)) % (1 << 20)
+        else:
+            addr = rng.randrange(0, 1 << 20, WORD)
+        out.append(("W" if rng.random() < 0.2 else "R", addr))
+    return out
+
+
 TRACES = {
     "sequential": sequential,
     "random": random_trace,
     "loop": loop,
     "stride": stride,
     "matmul": matmul,
+    "locality": locality,
 }
 
 

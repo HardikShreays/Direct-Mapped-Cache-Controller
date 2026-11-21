@@ -15,7 +15,10 @@
 //   - a valid bit is only set on the final refill word of a REFILL
 //   - no memory write is ever issued for a read request
 `timescale 1ns/1ps
-module tb_cache_trace;
+module tb_cache_trace #(
+    parameter CACHE_BYTES = 1024,
+    parameter BLOCK_BYTES = 16
+);
     reg         clk = 0, rst = 1;
     reg         cpu_req = 0, cpu_we = 0;
     reg  [31:0] cpu_addr = 0, cpu_wdata = 0;
@@ -28,7 +31,10 @@ module tb_cache_trace;
 
     wire [31:0] cnt_access, cnt_hit, cnt_miss, cnt_read, cnt_write, cnt_stall_cycles;
 
-    cache_top dut (
+    cache_top #(
+        .CACHE_BYTES (CACHE_BYTES),
+        .BLOCK_BYTES (BLOCK_BYTES)
+    ) dut (
         .clk(clk), .rst(rst),
         .cpu_req(cpu_req), .cpu_we(cpu_we), .cpu_addr(cpu_addr),
         .cpu_wdata(cpu_wdata), .cpu_rdata(cpu_rdata), .cpu_ready(cpu_ready),
