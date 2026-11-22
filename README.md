@@ -1,12 +1,17 @@
 # Direct-Mapped Cache Controller
 
 A direct-mapped cache controller in Verilog with a behavioral memory model,
-directed + unit testbenches, and a Python reference model.
+unit + directed + trace-driven testbenches, a Python reference model, exact
+counter cross-checking, performance results (hit rates, AMAT, geometry
+sweeps), Yosys synthesis, and a 2-way set-associative LRU extension.
 
 **Team:** Hardik Shreyas (lead), Saman, Bhavya, Priyansh, Prateek —
 Modern Computer Architecture, Project 6.
-**Status:** Phase I implemented on feature branches (RTL verified: `make sim` + `make test_units` pass). Pending merge into `main` via reviewed PRs — Phase I is not done until that merge lands.
+**Status:** Phase I + Phase II complete. `make regress` prints
+**REGRESSION PASS** (both designs, all traces, exact model cross-check).
 **Video:** see [docs/video_link.md](docs/video_link.md).
+**Report:** [docs/report/main.pdf](docs/report/main.pdf) (source:
+`docs/report/main.tex`).
 
 ## Design spec (frozen)
 
@@ -28,61 +33,83 @@ pulsing one cycle in DONE. Valid bits clear on reset. Performance counters:
 `cnt_access`, `cnt_hit`, `cnt_miss`, `cnt_read`, `cnt_write`,
 `cnt_stall_cycles`.
 
+The design is parameterized (`CACHE_BYTES`, `BLOCK_BYTES`; index/offset widths
+derived with `$clog2`) and verified at 512B/8B, 1KB/16B, and 2KB/32B.
+
+## Quick start
+
+Prerequisites: Icarus Verilog (`iverilog`, `vvp`), Python 3 with
+`numpy`/`pandas`/`matplotlib`, and Yosys (for `make synth`).
+
+```sh
+make sim          # directed tests + waveform dump to sim/cache.vcd
+make test_units   # per-module self-check testbenches
+make test_params  # directed tests at 1KB/16B and 2KB/32B
+make trace TRACE=loop   # replay one trace with golden-memory checking
+
+make crosscheck   # RTL counters == cache_model.py on all traces (exact)
+make regress      # everything; prints REGRESSION PASS
+make results      # regenerate results/*.csv and results/*.png
+make synth        # yosys gate-level + memory-inference logs
+make clean
+```
+
+## What `make regress` runs
+
+1. Unit testbenches for `addr_decode`, `tag_ram`, `valid_ram`, `data_ram`.
+2. Directed tests (`tb_cache_basic`): cold miss, hit, conflict miss, spatial
+   hits, write miss (no allocate), write hit + read-after-write, mid-run
+   reset; plus the same set at 2KB/32B (`tb_cache_params`).
+3. Trace-driven tests (`tb_cache_trace`) on six traces for **both designs**
+   (direct-mapped and 2-way LRU), with live assertions: `cpu_ready` pulses
+   exactly once per request and only in DONE, valid bits are only set on the
+   final refill word, and no memory write is ever issued for a read.
+4. Conflict-miss regression (`tb_conflict_2way`): a two-block thrash that the
+   direct-mapped cache cannot fix (0/24 hits) and 2-way fixes (22/24).
+5. Exact cross-check of RTL counters against `scripts/cache_model.py` for
+   both designs on all traces.
+
+## Results summary (see `results/`)
+
+- `hit_rates.csv` — RTL hit rates: sequential 75.0%, loop 99.7%, matmul-like
+  88.9%, random/stride ~0%, random-with-locality 4.6%.
+- `amat.csv` — measured miss penalty 55 cycles (4-word refill over per-word
+  handshakes); AMAT 1.18 (loop) to 56.0 (stride) vs. 10 cycles no-cache.
+- `sweep_locality.csv` + `hit_rate_vs_*.png` — capacity 1.0%→17.6% for
+  256B→4KB on the random-with-locality trace.
+- `design_comparison.csv` + `design_comparison.png` — 2-way LRU ties or
+  slightly trails direct-mapped on these traces, but eliminates the conflict
+  thrash (0/24 → 22/24 hits).
+- `write_policy.md` — write-through vs write-back analytic comparison.
+- `synth_yosys.log`, `synth_resource_table.md` — Yosys gate-level stats;
+  9,664 memory bits detected as BRAM-inferable. No Vivado machine was
+  available, so no vendor-tool numbers are claimed.
+
 ## Repository layout
 
 ```
-rtl/                 addr_decode.v tag_ram.v data_ram.v valid_ram.v
+rtl/                 addr_decode.v tag_ram.v data_ram.v valid_ram.v lru_ram.v
                      cache_controller.v cache_top.v
-tb/                  main_memory_model.v tb_cache_basic.v + unit TBs
-traces/              sequential, random, loop, stride, matmul (.trace)
-scripts/             gen_traces.py cache_model.py make_diagrams.py
+                     cache_controller_2way.v cache_top_2way.v
+tb/                  main_memory_model.v tb_cache_basic.v tb_cache_params.v
+                     tb_cache_trace.v tb_conflict_2way.v + unit TBs
+traces/              sequential, random, loop, stride, matmul, locality (.trace)
+scripts/             gen_traces.py cache_model.py crosscheck.py regress.py
+                     run_results.py compare_designs.py
+results/             hit_rates.csv amat.csv sweep_locality.csv
+                     design_comparison.csv write_policy.md synth logs + plots
 docs/                block_diagram.png fsm.png report/ video_link.md
 Makefile
 ```
 
-## Build & run
+## Phase II status / remaining team tasks
 
-Requires Icarus Verilog (`iverilog`/`vvp`) and Python 3.
-
-```sh
-make sim          # directed tests -> ALL TESTS PASSED + sim/cache.vcd
-make test_units   # per-module self-check TBs (decoder + 3 RAMs)
-make clean
-```
-
-Open `sim/cache.vcd` in GTKWave: the first read misses and refills all four
-words (watch `mem_req`/`mem_addr` walk 0x10 -> 0x1C), the next read of the
-same block hits with `cpu_ready` in the following cycle.
-
-## Reference-model hit rates (1 KB / 16 B, 10,000 accesses)
-
-```sh
-python3 scripts/cache_model.py traces/<name>.trace
-```
-
-| Trace      | Hit rate | Sanity check (per plan)      |
-|------------|----------|------------------------------|
-| sequential | 75.00%   | ~75% (1 miss per 4 words)    |
-| random     | 0.12%    | ~0–10%                       |
-| loop       | 99.68%   | >95% after warm-up           |
-| stride     | 0.00%    | ~0% (new block each access)  |
-| matmul     | 88.85%   | high (row reuse)             |
-
-RTL cross-check of counters against the Python model is Phase II (`make
-crosscheck`).
-
-## Branch rules
-
-- Branches: `feature/<name>-<task>` (e.g. `feature/saman-rams`), PR into `main`,
-  one reviewer who is not the author.
-- Commit messages: `<module>: <what>`; small and often.
-- Generated files stay out of git except final PNGs/CSVs/report PDF
-  (see `.gitignore`).
-
-## Roadmap (Phase II)
-
-- [ ] Trace-driven testbench (`tb_cache_trace.v`) + `make regress`
-- [ ] RTL counters cross-checked against `cache_model.py` (`make crosscheck`)
-- [ ] Hit-rate CSV/AMAT analysis + size/block sweep plots (`make results`)
-- [ ] Yosys synthesis log (`make synth`)
-- [ ] Optional: 2-way set-associative extension with LRU (`feature/2way`)
+- [x] Phase A: write path, counters, parameterization (Gates A passed)
+- [x] Phase B: trace-driven TB, assertions, cross-check, regression (Gate B)
+- [x] Phase C: hit-rate/AMAT/sweep results and plots (Gate C)
+- [x] Phase D: Yosys synthesis + resource table (Gate D; Vivado honestly absent)
+- [x] Phase E: 2-way set-associative LRU extension on `feature/2way`, merged
+      after full regression
+- [x] Phase F: final report PDF, this README, tagged release `v1.0`
+- [ ] Each member: own contribution paragraph in the report + 2-minute
+      explanation of their module (interview prep, Section 8 of the plan)

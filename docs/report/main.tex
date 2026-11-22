@@ -1,7 +1,8 @@
-% Direct-Mapped Cache Controller -- IEEE report skeleton (Phase I)
-% Compile with IEEEtran (Overleaf: new project from the IEEE conference template,
-% then paste this file).  Team: Hardik Shreyas (lead), Saman, Bhavya, Priyansh,
-% Prateek.  Course: Modern Computer Architecture, Project 6.
+% Direct-Mapped Cache Controller -- IEEE report (final, Phase I + II)
+% Compile with IEEEtran (Overleaf: new project from the IEEE conference
+% template, then paste this file, or `tectonic main.tex`).
+% Team: Hardik Shreyas (lead), Saman, Bhavya, Priyansh, Prateek.
+% Course: Modern Computer Architecture, Project 6.
 \documentclass[conference]{IEEEtran}
 \usepackage{graphicx}
 \usepackage{booktabs}
@@ -10,7 +11,7 @@
 \begin{document}
 
 \title{A Direct-Mapped Cache Controller in Verilog:\\
-Design, Verification, and Phase~I Results}
+Design, Verification, and Measured Results}
 
 \author{\IEEEauthorblockN{Hardik Shreyas, Saman, Bhavya, Priyansh, Prateek}
 \IEEEauthorblockA{Modern Computer Architecture -- Project 6}}
@@ -18,21 +19,27 @@ Design, Verification, and Phase~I Results}
 \maketitle
 
 \begin{abstract}
-Caches bridge the growing gap between processor and memory speeds. This project
-designs, implements, and verifies a direct-mapped cache controller in Verilog:
-a 1\,KB cache with 16-byte blocks (64 lines), a 32-bit address split into
-22-bit tag, 6-bit index, and 4-bit offset, and a write-through,
-no-write-allocate write policy. The controller is a five-state FSM (IDLE,
-COMPARE, REFILL, WRITE\_THRU, DONE) that refills whole blocks over a
-latency-modeled behavioral memory and reports performance counters
-(accesses, hits, misses, reads, writes, stall cycles). Phase~I delivers the
-read path (cold miss, refill, hits), a directed testbench that passes all
-cases, a waveform showing a miss, a 4-word refill, and a hit, and a Python
-reference model that reproduces expected hit rates on five memory traces:
-75\% on sequential word reads, above 99\% on a small loop, near 0\% on a large
-stride, and 88.9\% on a matrix-multiply-like pattern. Phase~II will complete
-the write path verification, trace-driven regression, AMAT analysis, synthesis,
-and a 2-way set-associative extension.
+Caches bridge the growing gap between processor and memory speeds. This
+project designs, implements, verifies, and evaluates a direct-mapped cache
+controller in Verilog: a 1\,KB cache with 16-byte blocks (64 lines), a 32-bit
+address split into 22-bit tag, 6-bit index, and 4-bit offset, and a
+write-through, no-write-allocate write policy. The controller is a five-state
+FSM (IDLE, COMPARE, REFILL, WRITE\_THRU, DONE) that refills whole blocks over
+a latency-modeled behavioral memory and reports six performance counters.
+Phase~I delivered the read path, directed tests, a waveform, and a Python
+reference model. Phase~II completed the write path with assertion-checked
+verification, a trace-driven regression whose RTL counters match the
+reference model exactly on six traces, an AMAT and geometry-sweep study, and
+Yosys synthesis. On the generated traces the design achieves 75.0\% hit rate
+on sequential reads, 99.7\% on a small loop, 88.9\% on a matrix-multiply-like
+pattern, and near 0\% on capacity-antagonistic patterns; the measured AMAT
+ranges from 1.18 cycles (loop) to 56.0 cycles (stride) against a no-cache
+baseline of 10 cycles per access. A 2-way set-associative LRU extension was
+built and shown to eliminate the direct-mapped conflict thrash (22/24 hits
+vs.\ 0/24 on a two-block thrash), while identical or slightly lower hit rates
+elsewhere. Synthesis detects 9{,}664 memory bits as block-RAM-inferable
+arrays; Vivado numbers were not collected (no FPGA machine available) and are
+reported honestly as absent.
 \end{abstract}
 
 \section{Introduction}
@@ -41,7 +48,9 @@ caches essential. The simplest effective organization is the direct-mapped
 cache: each memory block maps to exactly one cache line, selected by the
 address index bits. This project builds a working direct-mapped cache
 controller from scratch in Verilog, verifies it against a behavioral memory
-model, and measures its hit-rate behavior on representative access traces.
+model and a Python reference model, and measures its performance on
+representative access traces, then extends it to 2-way set associativity to
+quantify what associativity buys.
 
 The design targets (frozen by the team lead):
 \begin{itemize}
@@ -53,15 +62,19 @@ The design targets (frozen by the team lead):
         requested word.
   \item Hit latency: 1 cycle after the request is accepted; memory accesses
         cost \texttt{MEM\_LATENCY} = 10 cycles per word.
+  \item Performance counters: accesses, hits, misses, reads, writes, stall
+        cycles (32-bit outputs).
 \end{itemize}
 
 \section{Literature Review}
-(Phase I placeholder -- each member adds the sources they actually read.)
+(Each member adds the sources they actually read.)
 \begin{itemize}
   \item J. L. Hennessy and D. A. Patterson, \emph{Computer Architecture:
-        A Quantitative Approach} -- cache organization, AMAT, locality.
+        A Quantitative Approach} -- cache organization, AMAT, the three C's
+        of misses (compulsory, capacity, conflict).
   \item D. A. Patterson and J. L. Hennessy, \emph{Computer Organization and
-        Design, RISC-V Edition} -- direct-mapped caches, write policies.
+        Design, RISC-V Edition} -- direct-mapped caches, write policies,
+        write buffers.
   \item (Add 4--6 papers or lecture notes on cache design here.)
 \end{itemize}
 
@@ -69,7 +82,10 @@ The design targets (frozen by the team lead):
 \subsection{Address Split}
 With 16\,B blocks the offset is $\log_2 16 = 4$ bits; with 64 lines the index
 is $\log_2 64 = 6$ bits; the remaining $32-4-6 = 22$ bits form the tag.
-The offset's top 2 bits select the word inside the block.
+The offset's top 2 bits select the word inside the block. All field widths
+are derived from \texttt{CACHE\_BYTES}/\texttt{BLOCK\_BYTES} with
+\texttt{\$clog2}, so the same RTL covers other geometries (verified for
+512\,B/8\,B, 1\,KB/16\,B, and 2\,KB/32\,B).
 
 \subsection{Block Diagram and FSM}
 \begin{figure}[htbp]
@@ -90,7 +106,8 @@ The controller latches the request in IDLE, resolves hit/miss in COMPARE
 comparison happens one cycle after acceptance -- the 1-cycle hit), refills
 all four words on a read miss, writes through to memory on writes (updating
 the cached word on a write hit), and pulses \texttt{cpu\_ready} for one cycle
-in DONE.
+in DONE. On a read miss the requested word is captured during the refill and
+returned when the block completes.
 
 \subsection{Module Descriptions}
 \begin{itemize}
@@ -99,66 +116,213 @@ in DONE.
   \item \texttt{rtl/tag\_ram.v}, \texttt{rtl/data\_ram.v},
         \texttt{rtl/valid\_ram.v} -- synchronous-read RAMs; the valid RAM is
         cleared on reset (Saman).
-  \item \texttt{rtl/cache\_controller.v} -- the FSM and performance counters
-        (Hardik).
+  \item \texttt{rtl/cache\_controller.v} -- the FSM and performance counters,
+        including the write-through path (Hardik).
   \item \texttt{rtl/cache\_top.v} -- top-level wiring (Hardik).
+  \item \texttt{rtl/lru\_ram.v}, \texttt{rtl/cache\_controller\_2way.v},
+        \texttt{rtl/cache\_top\_2way.v} -- 2-way extension with per-set LRU
+        bits (Saman, Hardik).
   \item \texttt{tb/main\_memory\_model.v} -- behavioral memory,
         \texttt{mem[i] = 4i + 0xA5000000}, \texttt{MEM\_LATENCY} cycles per
         word access (Bhavya).
-  \item \texttt{tb/tb\_cache\_basic.v} -- directed tests: cold miss, hit,
-        spatial hit, conflict miss, eviction, write miss (no allocate),
-        write hit + read-after-write, mid-run reset (Bhavya).
-  \item \texttt{scripts/gen\_traces.py},
-        \texttt{scripts/cache\_model.py} -- trace generation and the Python
-        reference model (Priyansh).
+  \item \texttt{tb/tb\_cache\_basic.v}, \texttt{tb/tb\_cache\_params.v} --
+        directed tests: cold miss, hit, spatial hit, conflict miss, eviction,
+        write miss (no allocate), write hit + read-after-write, mid-run
+        reset, at multiple geometries (Bhavya).
+  \item \texttt{tb/tb\_cache\_trace.v} -- trace-driven testbench with golden
+        memory checking and on-the-fly assertions (Bhavya).
+  \item \texttt{scripts/gen\_traces.py}, \texttt{scripts/cache\_model.py} --
+        trace generation and the Python reference model (1-way and 2-way
+        LRU) (Priyansh).
+  \item \texttt{scripts/crosscheck.py}, \texttt{scripts/regress.py},
+        \texttt{scripts/run\_results.py}, \texttt{scripts/compare\_designs.py}
+        -- regression, cross-check, and results generation (Priyansh,
+        Hardik).
 \end{itemize}
 
 \subsection{Verification Strategy}
-Per-module self-check testbenches run under \texttt{make test\_units}; the
-directed testbench runs under \texttt{make sim}, prints \texttt{ALL TESTS
-PASSED}, and dumps \texttt{sim/cache.vcd} showing a miss, the 4-word refill,
-and a subsequent hit. The Python reference model
-(\texttt{scripts/cache\_model.py}) provides golden hit/miss counts; Phase~II
-cross-checks the RTL counters against it on all five traces.
+Four layers, all automated under \texttt{make regress} (prints
+\texttt{REGRESSION PASS}):
+\begin{enumerate}
+  \item Per-module self-check testbenches (\texttt{make test\_units}).
+  \item Directed tests (\texttt{make sim}, \texttt{make test\_params}):
+        cold miss, hit, conflict miss, spatial hits, write miss with no
+        allocate, write hit with read-after-write, mid-run reset -- passed at
+        1\,KB/16\,B and 2\,KB/32\,B geometries.
+  \item Trace-driven tests: \texttt{tb\_cache\_trace.v} replays every trace,
+        checks every read against a golden memory array, and continuously
+        asserts (B-4): \texttt{cpu\_ready} pulses exactly once per request and
+        only in DONE, a valid bit is only set on the final refill word, and a
+        memory write is never issued for a read request. Assertion monitoring
+        caught one real bug during development: \texttt{mem\_we} was not
+        cleared outside \texttt{WRITE\_THRU}, so it stayed high into the next
+        read request.
+  \item Exact cross-check: RTL counters must equal the Python reference
+        model's hit/miss/read/write counts on every trace, for both designs
+        (\texttt{make crosscheck}). The cross-check pinned down a second bug
+        in the 2-way design: the LRU bit was updated on write misses even
+        though no allocation occurs, which made the replacement policy
+        diverge from true LRU.
+\end{enumerate}
 
-\section{Phase I Results}
-Reference-model hit rates on the generated traces (RTL cross-check is
-Phase~II work):
+\section{Results and Discussion}
+All numbers below come from \texttt{results/*.csv} regenerated by
+\texttt{make results}; the traces are seeded and reproducible.
 
+\subsection{Hit Rates (RTL, 1\,KB / 16\,B)}
 \begin{table}[htbp]
   \centering
-  \caption{Reference-model hit rates (1\,KB / 16\,B, 10{,}000 accesses each).}
-  \begin{tabular}{lrr}
+  \caption{RTL hit rates and stall cycles (10{,}000 accesses each).}
+  \begin{tabular}{lrrr}
     \toprule
-    Trace & Hit rate & Expected \\
+    Trace & Hit rate & Stalls & Expected \\
     \midrule
-    Sequential word reads & 75.00\% & $\approx$75\% (1 miss / 4) \\
-    Random over 1\,MB     & 0.12\%  & $\approx$0--10\% \\
-    Loop over 512\,B set  & 99.68\% & $>$95\% after warm-up \\
-    Stride 64\,B          & 0.00\%  & $\approx$0\% \\
-    Matmul-like           & 88.85\% & high (A row reuse) \\
+    Sequential word reads & 75.00\% & 137{,}500 & $\approx$75\% \\
+    Random over 1\,MB     & 0.12\%  & 464{,}594 & $\approx$0--10\% \\
+    Loop over 512\,B set  & 99.68\% & 14{,}760  & $>$95\% \\
+    Stride 64\,B          & 0.00\%  & 550{,}000 & $\approx$0\% \\
+    Matmul-like           & 88.85\% & 48{,}599  & high \\
+    Random-with-locality  & 4.59\%  & 444{,}113 & geometry-sensitive \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The directed RTL simulation passes all tests, and the waveform
-(\texttt{sim/cache.vcd}) shows the expected miss $\rightarrow$ 4-word refill
-$\rightarrow$ hit sequence.
+These match the Phase~I reference-model predictions exactly (the cross-check
+is now part of the regression, not a spot check).
 
-\section{Individual Contributions}
-(One paragraph per member, matching git history.)
+\subsection{AMAT}
+\texttt{AMAT} $=$ hit time $+$ miss rate $\times$ miss penalty, with hit time
+$= 1$ cycle. The miss penalty is measured from the RTL on a pure-read trace:
+a 4-word refill with a per-word handshake costs \textbf{55 cycles}
+($4 \times 10$ memory cycles plus 15 cycles of handshake/gap overhead).
+
+\begin{table}[htbp]
+  \centering
+  \caption{AMAT at 1\,KB/16\,B (miss penalty 55 cycles, no-cache baseline
+  10 cycles/access).}
+  \begin{tabular}{lrrr}
+    \toprule
+    Trace & Miss rate & AMAT (cyc) & vs.\ no-cache \\
+    \midrule
+    Loop          & 0.32\%  & 1.18  & $8.50\times$ faster \\
+    Matmul-like   & 11.15\% & 7.13  & $1.40\times$ faster \\
+    Sequential    & 25.00\% & 14.75 & $0.68\times$ (slower) \\
+    Random        & 99.88\% & 55.93 & $0.18\times$ \\
+    Stride        & 100\%   & 56.00 & $0.18\times$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Two honest observations. First, on miss-heavy workloads this cache is
+\emph{slower} than having no cache at all: refilling a block word-by-word
+over a per-word handshake costs 55 cycles, versus 10 cycles to fetch just the
+needed word, so the block fill amortizes only when later words are actually
+used (spatial locality). A burst-transfer or critical-word-first refill
+would cut the penalty to roughly $10 + 3 \times 10$ or better. Second,
+write-through adds its own stalls: a write costs about 13 cycles even on a
+hit, which is included in the stall counters but not in the AMAT formula
+above.
+
+\subsection{Geometry Sweep}
+Sweeping cache size (256\,B--4\,KB) and block size (8--64\,B) on the
+random-with-locality trace (\texttt{results/sweep\_locality.csv},
+\texttt{results/hit\_rate\_vs\_cache.png}, \texttt{results/hit\_rate\_vs\_block.png}):
 \begin{itemize}
-  \item \textbf{Hardik Shreyas (lead):} repo setup, controller FSM, top level,
-        Makefile, integration and Phase~I gate.
-  \item \textbf{Saman:} address decoder and the three RAMs with unit TBs.
-  \item \textbf{Bhavya:} behavioral memory model and directed testbench.
-  \item \textbf{Priyansh:} trace generation and Python reference model.
-  \item \textbf{Prateek:} diagrams, report assembly, video recording.
+  \item Hit rate grows monotonically with capacity: 1.0\% at 256\,B to
+        17.6\% at 4\,KB (32\,B blocks), because the trace's 16\,KB hot
+        footprint fits progressively better.
+  \item Block size has a weak effect at this capacity range: larger blocks
+        capture more spatial locality but increase conflict pressure in a
+        small cache; 32--64\,B is marginally best at 4\,KB.
 \end{itemize}
 
-\section{Conclusion (Phase II)}
-To be completed after Phase~II results (AMAT, sweeps, synthesis, 2-way
-comparison).
+\subsection{Write Policy (analytic, C-5)}
+Measured from the RTL: write hit/miss through cost is about 13 cycles
+(\texttt{MEM\_LATENCY} $+$ handshake). A write-back design would make write
+hits cost 1 cycle (set a dirty bit) but requires 1 dirty bit per line, an
+eviction write-back path, and would convert dirty evictions into
+refill $+$ write-back double penalties. With a 1\,KB cache and high eviction
+rates, write-back traffic approaches one block per miss, so write-through is
+competitive at this scale and much simpler. Full note:
+\texttt{results/write\_policy.md}.
+
+\subsection{Synthesis (Yosys)}
+Yosys 0.71, generic gate-level flow, 1\,KB/16\,B
+(\texttt{results/synth\_yosys.log}, table in
+\texttt{results/synth\_resource\_table.md}): 26{,}279 cells total, of which
+10{,}096 flip-flops -- but 9{,}664 of those bits belong to the three RAM
+arrays, which a memory-detection pass reports as true memories (8{,}192 data
+bits, 1{,}408 tag bits, 64 valid bits) and an FPGA backend would map to block
+RAM. The controller itself is 1{,}001 cells / 139 flip-flops. The RAMs were
+written with synchronous read ports from the start, so no BRAM-friendly
+rewrap was needed (recorded before/after per plan D-3). \textbf{Vivado was
+not run:} no FPGA machine was available this phase, so no LUT/BRAM/Fmax
+numbers from a vendor tool are claimed.
+
+\subsection{2-Way Set-Associative Extension}
+The extension (branch \texttt{feature/2way}, merged after full regression)
+duplicates the tag/valid/data arrays per way, compares both tags in
+parallel, selects the hitting way, and keeps one LRU bit per set, updated on
+every hit and every read-miss allocation.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Direct-mapped vs.\ 2-way LRU (RTL, same traces).}
+  \begin{tabular}{lrrr}
+    \toprule
+    Trace & DM hit rate & 2-way hit rate & Gain \\
+    \midrule
+    Sequential  & 75.00\% & 75.00\% & 0.00\,pp \\
+    Random      & 0.12\%  & 0.10\%  & $-$0.02\,pp \\
+    Loop        & 99.68\% & 99.68\% & 0.00\,pp \\
+    Stride      & 0.00\%  & 0.00\%  & 0.00\,pp \\
+    Matmul-like & 88.85\% & 86.57\% & $-$2.28\,pp \\
+    Locality    & 4.59\%  & 4.62\%  & $+$0.03\,pp \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Associativity buys nothing on these traces -- and \emph{costs} 2.28 points on
+the matmul pattern, where halving the number of sets (32 sets $\times$ 2 ways
+vs.\ 64 lines) plus LRU replacement hurts a streaming access order. The
+benefit appears exactly where theory says it should: on a directed two-block
+conflict thrash (\texttt{tb\_conflict\_2way.v}), the direct-mapped cache gets
+\textbf{0 of 24} hits while the 2-way cache gets \textbf{22 of 24}
+(\texttt{results/design\_comparison.csv}, plot
+\texttt{results/design\_comparison.png}).
+
+\section{Individual Contributions}
+(One paragraph per member, matching git history; each member writes their
+own.)
+\begin{itemize}
+  \item \textbf{Hardik Shreyas (lead):} repo setup, controller FSM incl.\
+        write path and counters, top level, Makefile, parameterized directed
+        tests, regression/crosscheck/results infrastructure, 2-way
+        controller, integration of all phase gates.
+  \item \textbf{Saman:} address decoder, RAMs (tag/data/valid, and LRU for
+        the 2-way extension) with unit TBs, parameterization review.
+  \item \textbf{Bhavya:} behavioral memory model, directed testbenches,
+        trace-driven testbench with assertions.
+  \item \textbf{Priyansh:} trace generation (incl.\ random-with-locality),
+        Python reference model (1-way and 2-way LRU), cross-check and
+        results scripts.
+  \item \textbf{Prateek:} diagrams, report assembly, video recording,
+        synthesis runs.
+\end{itemize}
+
+\section{Conclusion}
+A direct-mapped, write-through, no-write-allocate cache controller was
+designed, verified against a golden model with an exact counter cross-check,
+and evaluated. The measurements confirm the textbook expectations (spatial
+locality gives 75\%, small working sets give $>$99\%, antagonistic patterns
+near 0\%) and quantify the design's limits: a word-granular refill makes the
+miss penalty (55 cycles) exceed five no-cache accesses, so the cache only
+pays off with spatial locality, and associativity only pays off on conflict
+patterns. The verification infrastructure caught two real bugs (a stuck
+\texttt{mem\_we} and an LRU update on write misses), demonstrating the value
+of assertions plus model cross-checking over directed tests alone. Future
+work: burst or critical-word-first refill, write buffers, and a vendor-tool
+synthesis run.
 
 \section{References}
 \begin{thebibliography}{9}
