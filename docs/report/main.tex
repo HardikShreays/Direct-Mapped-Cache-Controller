@@ -90,13 +90,13 @@ are derived from \texttt{CACHE\_BYTES}/\texttt{BLOCK\_BYTES} with
 \subsection{Block Diagram and FSM}
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=\linewidth]{../../docs/block_diagram.png}
+  \includegraphics[width=\linewidth]{../../docs/cache_block_diagram.png}
   \caption{Block diagram: cache\_top instantiates the controller, the
   tag/data/valid RAMs, the address decoder, and the performance counters.}
 \end{figure}
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=\linewidth]{../../docs/fsm.png}
+  \includegraphics[width=\linewidth]{../../docs/cache_controller_fsm.png}
   \caption{Controller FSM. Valid bits are cleared on reset; writes never
   allocate on miss.}
 \end{figure}

@@ -98,7 +98,7 @@ scripts/             gen_traces.py cache_model.py crosscheck.py regress.py
                      run_results.py compare_designs.py
 results/             hit_rates.csv amat.csv sweep_locality.csv
                      design_comparison.csv write_policy.md synth logs + plots
-docs/                block_diagram.png fsm.png report/ video_link.md
+docs/                cache_block_diagram.png cache_controller_fsm.png report/ video_link.md
 Makefile
 ```
 

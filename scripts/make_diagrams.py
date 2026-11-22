@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/block_diagram.png and docs/fsm.png for the report (P1-6)."""
+"""Generate cache diagrams in docs/ for the report (P1-6)."""
 import os
 import matplotlib
 matplotlib.use("Agg")
@@ -95,7 +95,7 @@ alabel(ax, 10.3, 2.35, "mem_req / we / addr / wdata")
 arrow(ax, 12.7, 1.7, 7.6, 4.15, rad=0.35)
 alabel(ax, 11.2, 1.05, "mem_rdata / mem_ready")
 
-fig.savefig(os.path.join(OUT, "block_diagram.png"), dpi=150, bbox_inches="tight")
+fig.savefig(os.path.join(OUT, "cache_block_diagram.png"), dpi=150, bbox_inches="tight")
 plt.close(fig)
 
 # ================= FSM diagram =================
@@ -127,6 +127,6 @@ ax.text(6.5, 0.35,
         "REFILL issues word reads at block_base + 4*i for i = 0..3, waiting for mem_ready on each word.",
         ha="center", fontsize=9, color="#333333")
 
-fig.savefig(os.path.join(OUT, "fsm.png"), dpi=150, bbox_inches="tight")
+fig.savefig(os.path.join(OUT, "cache_controller_fsm.png"), dpi=150, bbox_inches="tight")
 plt.close(fig)
-print("wrote docs/block_diagram.png and docs/fsm.png")
+print("wrote docs/cache_block_diagram.png and docs/cache_controller_fsm.png")
