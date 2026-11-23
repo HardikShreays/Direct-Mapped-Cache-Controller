@@ -4,7 +4,7 @@ Phase I demo video (max 5:00, unlisted YouTube or Drive):
 
 <!-- TODO(recorded by Prateek): paste the link here before submitting the Google Form -->
 
-Link: _to be added_
+Link: https://youtu.be/3302sxtFW7o
 
 Planned outline (from the project plan):
 - 0:00-0:30 project idea + team intro (Hardik)
